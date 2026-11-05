@@ -77,8 +77,37 @@ If you don't have dbus, CEF reports errors, but you can ignore them.
 
 ### Linux aarch64 (ARM64)
 
-Run `export LD_PRELOAD=/{somewhere}/libcef.so` before running CEF.
-It comes from a bug of CEF Automated Builds: [Dynamic loading of libcef.so on Linux ARM64 not possible anymore due to TLS size increase](https://github.com/chromiumembedded/cef/issues/3803).
+Linux aarch64 bindings are included. Use the **Linux ARM64** Sample Application archive for the exact CEF version in `cef_capi/version.py`.
+See [Build wheel](#build-wheel) for native packaging.
+
+Some systems fail to load `libcef.so` with `cannot allocate memory in static TLS block`.
+Start Python with `libcef.so` in `LD_PRELOAD` to apply the [Linux ARM64 static TLS workaround](https://github.com/chromiumembedded/cef/issues/3803).
+Setting `LD_PRELOAD` inside an existing Python process does not reserve static TLS space.
+
+For a source checkout:
+
+```bash
+CEF_SMOKE_DIR="$(mktemp -d)"
+xvfb-run -a env LD_PRELOAD="$PWD/cef_binary/client/Release/libcef.so${LD_PRELOAD:+:$LD_PRELOAD}" \
+    XDG_CONFIG_HOME="$CEF_SMOKE_DIR/config" XDG_CACHE_HOME="$CEF_SMOKE_DIR/cache" \
+    python -m cef_capi.smoke_test
+```
+
+For an installed wheel, locate the library without importing `cef_capi`:
+
+```bash
+CEF_SMOKE_DIR="$(mktemp -d)"
+LIBCEF_PATH="$(python -c 'from importlib.metadata import distribution; print(distribution("cef-capi-py").locate_file("cef_capi/runtime/libcef.so"))')"
+xvfb-run -a env LD_PRELOAD="$LIBCEF_PATH${LD_PRELOAD:+:$LD_PRELOAD}" \
+    XDG_CONFIG_HOME="$CEF_SMOKE_DIR/config" XDG_CACHE_HOME="$CEF_SMOKE_DIR/cache" \
+    python -m cef_capi.smoke_test
+```
+
+Use the Python interpreter from the environment that contains the wheel.
+Xvfb provides the X11 display required for windowless rendering.
+The temporary config and cache directories isolate the smoke test from your browser profile.
+CEF needs writable directories. A read-only default profile can cause initialization failure.
+Remove `$CEF_SMOKE_DIR` after the test.
 
 ### macOS
 
@@ -325,13 +354,39 @@ clang2py -c -o ../../cef_capi/version.py -x -k m include/cef_version.h -r cef.* 
 Set up `cef_binary/client` as above. Then:
 
 - Windows: `python -m build --wheel --config-setting=--build-option=--plat-name=win_amd64`
-- Linux:
+- Linux x86-64:
 
 ```bash
 # start from repo root
 strip cef_binary/client/Release/*.so cef_binary/client/Release/cefsimple
 python -m build --wheel --config-setting=--build-option=--plat-name=manylinux2014_`uname -m`
 ```
+- Linux aarch64 (ARM64):
+
+Use a native aarch64 host and the matching Linux ARM64 Sample Application archive.
+Place its `Release` directory at `cef_binary/client/Release`.
+Keep the archive's `LICENSE.txt` at `cef_binary/client/LICENSE.txt` for inclusion in the wheel.
+The runtime archive supplies the native binaries. Building Chromium and regenerating the included bindings are unnecessary.
+
+```bash
+# start from repo root on a Linux aarch64 host
+strip cef_binary/client/Release/*.so cef_binary/client/Release/cefsimple
+LD_PRELOAD="$PWD/cef_binary/client/Release/libcef.so${LD_PRELOAD:+:$LD_PRELOAD}" \
+    python -m build --wheel --config-setting=--build-option=--plat-name=linux_aarch64
+python -m pip install dist/cef_capi_py-131.3.5-py3-none-linux_aarch64.whl
+```
+
+The `linux_aarch64` tag identifies a native Linux ARM64 wheel. It does not certify a manylinux compatibility baseline.
+Check every bundled ELF file and its dependencies before assigning a manylinux tag.
+Check the built wheel without loading its runtime:
+
+```bash
+CEF_ARM64_WHEEL="$PWD/dist/cef_capi_py-131.3.5-py3-none-linux_aarch64.whl" \
+    python -m unittest discover -s tests -p test_native_wheel.py
+```
+
+Run the [ARM64 smoke test](#linux-aarch64-arm64) from outside the checkout to test the installed wheel.
+
 - macOS:
 
 ```bash

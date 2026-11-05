@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=60"]
+requires = ["setuptools>=70.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -28,6 +28,11 @@ repository = "https://github.com/hajimen/cef-capi-py.git"
 
 [tool.setuptools.dynamic]
 version = {attr = "cef_capi.__version__"}
+
+[tool.setuptools.cmdclass]
+bdist_wheel = "tool.arm64_wheel.PlatformWheel"
+install = "tool.arm64_wheel.PlatformInstall"
+sdist = "tool.arm64_wheel.SourceDistribution"
 
 [tool.setuptools.package-dir]
 "cef_capi.runtime" = "cef_binary/client/Release"
